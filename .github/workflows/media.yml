@@ -1,0 +1,43 @@
+name: Update media list
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'photos/**'
+      - 'audio/**'
+      - '.github/workflows/media.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - name: Generate media.json
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          from urllib.parse import quote
+          extensions = {'photos': {'.jpg', '.jpeg', '.png', '.gif', '.webp'}, 'audio': {'.mp3', '.wav', '.ogg', '.m4a', '.aac'}}
+          data = {}
+          for folder, allowed in extensions.items():
+              data[folder] = [quote(p.as_posix(), safe='/') for p in sorted(Path(folder).rglob('*')) if p.is_file() and p.suffix.lower() in allowed]
+          Path('media.json').write_text(json.dumps(data, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+          print('Photos:', len(data['photos']), 'Audio:', len(data['audio']))
+          PY
+      - name: Commit updated media list
+        run: |
+          if ! git diff --quiet -- media.json; then
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git add media.json
+            git commit -m 'Update media list'
+            git push
+          fi
