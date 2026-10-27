@@ -1,0 +1,18 @@
+'use strict';
+const $ = id => document.getElementById(id);
+const start=$('start'), play=$('play'), end=$('end'), photo=$('photo'), audioView=$('audioView'), countdown=$('countdown'), status=$('status');
+let photos=[], audios=[], photoDeck=[], audioDeck=[], currentAudio=null, active=false, token=0, deadline=0, phaseTimer=null, ticker=null;
+const shuffle = arr => {const a=[...arr];for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;};
+const draw = (files, type) => {let deck=type==='photo'?photoDeck:audioDeck;if(!deck.length){deck=shuffle(files);if(type==='photo')photoDeck=deck;else audioDeck=deck;}return deck.pop();};
+const rand=(min,max)=>Math.floor(Math.random()*(max-min+1))+min;
+function show(section){for(const s of [start,play,end])s.classList.add('hidden');section.classList.remove('hidden');}
+function stopAudio(){if(currentAudio){currentAudio.pause();currentAudio.removeAttribute('src');currentAudio.load();currentAudio=null;}}
+function cleanup(){active=false;token++;clearTimeout(phaseTimer);clearInterval(ticker);phaseTimer=null;ticker=null;stopAudio();photo.removeAttribute('src');photo.classList.add('hidden');audioView.classList.add('hidden');}
+function finish(){cleanup();show(end);}
+function exit(){cleanup();show(start);}
+function schedule(ms,fn,myToken){clearTimeout(phaseTimer);phaseTimer=setTimeout(()=>{if(active&&token===myToken)fn();},ms);}
+function nextPhoto(){if(!active)return;if(Date.now()>=deadline){finish();return;}stopAudio();audioView.classList.add('hidden');photo.classList.remove('hidden');photo.src=draw(photos,'photo');const myToken=token;const ms=Math.min(rand(4,7)*1000,Math.max(0,deadline-Date.now()));schedule(ms,nextAudio,myToken);}
+function nextAudio(){if(!active)return;if(Date.now()>=deadline){finish();return;}photo.classList.add('hidden');photo.removeAttribute('src');audioView.classList.remove('hidden');const seconds=rand(3,5);const phaseEnd=Math.min(deadline,Date.now()+seconds*1000);const myToken=token;clearInterval(ticker);const tick=()=>{if(!active||token!==myToken)return;countdown.textContent=String(Math.max(0,Math.ceil((phaseEnd-Date.now())/1000)));};tick();ticker=setInterval(tick,100);
+currentAudio=new Audio(draw(audios,'audio'));currentAudio.preload='auto';currentAudio.play().catch(()=>{if(active&&token===myToken)countdown.textContent+=' · звук заблокирован';});schedule(Math.max(0,phaseEnd-Date.now()),()=>{clearInterval(ticker);nextPhoto();},myToken);}
+async function begin(){if(active)return;status.textContent='Загрузка списка файлов…';$('startBtn').disabled=true;try{const response=await fetch('media.json?ts='+Date.now(),{cache:'no-store'});if(!response.ok)throw Error('Не удалось получить media.json');const data=await response.json();photos=(data.photos||[]).filter(x=>typeof x==='string');audios=(data.audio||[]).filter(x=>typeof x==='string');if(!photos.length||!audios.length)throw Error('Добавь хотя бы одну фотографию в photos и один аудиофайл в audio, затем дождись публикации GitHub Pages.');photoDeck=[];audioDeck=[];cleanup();active=true;deadline=Date.now()+240000;show(play);nextPhoto();}catch(e){status.textContent=e.message;}finally{$('startBtn').disabled=false;}}
+$('startBtn').addEventListener('click',begin);$('exitBtn').addEventListener('click',exit);$('againBtn').addEventListener('click',()=>{cleanup();show(start);status.textContent='';});document.addEventListener('keydown',e=>{if(e.key==='Enter'&&!start.classList.contains('hidden')&&document.activeElement!==$('startBtn')){e.preventDefault();begin();}if(e.key==='Escape'&&active)exit();});document.addEventListener('visibilitychange',()=>{if(active&&Date.now()>=deadline)finish();});
